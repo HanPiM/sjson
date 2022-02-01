@@ -104,5 +104,4 @@ json j = json::parse(R"__({"string": "abcdefg"})__");
 事实上，`json::object` 和 `json::array` 分别继承自 `std::unordered_map` 和 `std::vector` 。
 
 ```c++
-
 ```

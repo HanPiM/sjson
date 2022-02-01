@@ -783,12 +783,18 @@ private:
 
     inline void _ensure_is(json_type x)const
     {
-        if (_type != x)_SJSON_THROW_TYPE_ADJUST(_type, x);
+        if (_type != x)
+        {
+            if (_type == json_type::value && as_value().type() == value::_empty)
+                return;
+            _SJSON_THROW_TYPE_ADJUST(_type, x);
+        }
     }
 };
 template<typename _value_type>
 const std::function<std::string(int, const char*, const std::string&)>
-json_base<_value_type>::_basic_error_info = [](int line, const char* func, const std::string& str)
+json_base<_value_type>::_basic_error_info =
+ [](int line, const char* func, const std::string& str)
 {
     return std::to_string(line) + ':' + func + ':' + str;
 };

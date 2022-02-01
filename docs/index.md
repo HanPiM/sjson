@@ -62,7 +62,7 @@ json x =
 
 如果您想表达特殊情况（如满足 object 识别条件的数组）请使用 `json::array` 来标识：
 ```c++
-json arr = json::array{{"string", "abcdefg"},...};
+json arr = json::array{{"string", "abcdefg"}};
 ```
 
 #### 从字符串读取

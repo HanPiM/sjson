@@ -89,7 +89,7 @@ json j = json::parse(R"__({"string": "abcdefg"})__");
 
 使用 `dump` 来获取 json 对象序列化后的字符串。
 
-` void dump(std::string& dest, const std::string& tab = "  ", int deep = 0)const` ： 
+`void dump(std::string& dest, const std::string& tab = "  ", int deep = 0)const` ： 
 |参数|说明|
 |-|-|
 |`dest`|指示输出目标|

@@ -21,23 +21,6 @@
 namespace sjson
 {
 
-namespace _private
-{
-// https://en.cppreference.com/w/cpp/types/conjunction
-template<class...> struct conjunction : std::true_type { };
-template<class B1> struct conjunction<B1> : B1 { };
-template<class B1, class... Bn>
-struct conjunction<B1, Bn...> 
-    : std::conditional<bool(B1::value), conjunction<Bn...>, B1>::type {};
-    
-template <bool B>
-using bool_constant = std::integral_constant<bool, B>;
-
-// https://en.cppreference.com/w/cpp/types/negation
-template<class B>
-struct negation : bool_constant<!bool(B::value)> { };
-}
-
 class _ref_union
 {
 public:
@@ -153,6 +136,11 @@ private:
     }
 };
 
+class u8string
+{
+
+};
+
 enum class json_type
 {
     value,
@@ -166,11 +154,6 @@ constexpr inline const char *json_type_name(json_type x)
                 ? "array"
                 : (x == json_type::object ? "object" : "value");
 }
-inline std::string _basic_error_info(
-    int line, const char *func, const std::string &str)
-{
-    return std::to_string(line) + ':' + func + ':' + str;
-};
 
 class json_error
 {
@@ -215,18 +198,18 @@ private:
 #define _SJSON_THROW_TYPE_ADJUST_(dest, need) ((void)0)
 #else
 #define _SJSON_THROW_TYPE_ADJUST_RAW(dest, need) \
-_SJSON_THROW(std::string("call method of json_type::") + need + " on json_type::" + dest)
+_SJSON_THROW(std::string("call method of json::") + need + " on json::" + dest)
 #define _SJSON_THROW_TYPE_ADJUST(dest, need) \
 _SJSON_THROW_TYPE_ADJUST_RAW(json_type_name(dest), json_type_name(need))
 #endif
 
-template <typename _string_type>
+template<typename T>
 class json_base
 {
 private:
     class _my_initializer_list;
 public:
-    using string_t = _string_type;
+    using string_t = std::string;
     using string_char_t = typename string_t::value_type;
 
     class value
@@ -234,18 +217,14 @@ public:
     public:
         enum
         {
-            _empty,
-
             null,
             number_double,
             number_integer,
             boolean,
-            string,
-
-            _basic_type_end
+            string
         };
 
-        value() : _type(_empty), _data(nullptr) {}
+        value() { assign(nullptr); }
         value(std::nullptr_t) { assign(nullptr); }
         value(bool x) { assign(x); }
         value(double x) { assign(x); }
@@ -303,7 +282,7 @@ public:
 
         void assign()
         {
-            _type = _empty;
+            _type = null;
             _data.clear();
         }
         void assign(std::nullptr_t) { _type = null; }
@@ -314,7 +293,7 @@ public:
             _data = x._data;
         }
 
-        void basic_clear()
+        void clear()
         {
             switch (_type)
             {
@@ -328,9 +307,8 @@ public:
                 as<bool>() = 0;
             }
         }
-        virtual void clear() { return basic_clear(); }
 
-        std::string basic_to_string() const
+        std::string to_string() const
         {
             switch (_type)
             {
@@ -339,180 +317,50 @@ public:
             case number_integer:
                 return std::to_string(_data.as<int>());
             case string:
-                return "";//_data.as<string_t>();
+                return _data.as<string_t>();
             case null:
                 return "null";
             case boolean:
                 return _data.as<bool>() ? "true" : "false";
-            case _empty:
-                return "_empty";
             }
             return "unknown";
         }
-        virtual std::string to_string() const { return basic_to_string(); }
-
-        template <typename _iter_t>
-        bool basic_parse(_iter_t first, _iter_t last)
-        {
-            assign();
-            bool haserr = false;
-            auto is_str = [&first, &last](const std::string &s)
-            {
-                auto it = first;
-                for (auto ch : s)
-                {
-                    if (!(it != last))
-                        return false; // #1
-                    if (ch != *it)
-                        return false;
-                    ++it;
-                    // #1 不能置于此处，因为会导致提前结束
-                }
-                /* 确保末尾没有非空字符 */
-                if (it != last && !isspace(*it))
-                    return false;
-                return true;
-            };
-            switch (*first)
-            {
-            case 't':
-                if (is_str("true"))
-                    assign(true);
-                break;
-            case 'f':
-                if (is_str("false"))
-                    assign(false);
-                break;
-            case 'n':
-                if (is_str("null"))
-                    assign(nullptr);
-                break;
-            case '"':
-            {
-                assign(std::string());
-                auto &s = as<std::string>();
-                auto ch = *first;
-                size_t len = 0;
-                auto it = first;
-                ++it;
-                while (it != last && *it != '"')
-                {
-                    if (*it == '\\')
-                        ++it;
-                    ++it;
-                    ++len;
-                }
-                s.reserve(len);
-                it = first;
-                ++it;
-                while (it != last && *it != '"')
-                {
-                    if (*it == '\\')
-                    {
-                        ++it;
-                        switch (*it)
-                        {
-                        case '/':
-                        case '"':
-                        case '\'':
-                        case '\\':
-                            ch = *it;
-                            break;
-                        case 'n':
-                            ch = '\n';
-                            break;
-                        case 't':
-                            ch = '\t';
-                            break;
-                        case 'f':
-                            ch = '\f';
-                            break;
-                        case 'v':
-                            ch = '\v';
-                            break;
-                        case 'a':
-                            ch = '\a';
-                            break;
-                        case 'b':
-                            ch = '\b';
-                            break;
-                        case 'u':
-                        {
-                            // TODO : Unicode->UTF-8
-                            break;
-                        }
-                        default:
-                            haserr = true;
-                            break;
-                        }
-                    }
-                    else
-                        ch = *it;
-                    s.push_back(ch);
-                    if (haserr)
-                        break;
-                    ++it;
-                }
-                break;
-            }
-            default:
-            {
-                bool sign = false;
-                auto it = first;
-                if (*first == '-')
-                {
-                    ++it;
-                    sign = true;
-                }
-                if (!isdigit(*it))
-                    break;
-
-                break;
-            }
-            }
-            return haserr || _type == _empty;
-        }
-        template <typename _iter_t>
-        bool parse(_iter_t first, _iter_t last) { return basic_parse(first, last); }
-        template <typename _t>
-        bool parse(const _t &x) { return parse(std::begin(x), std::end(x)); }
 
         inline int type() const { return _type; }
-        static const char *basic_type_name(int type)
+        static const char *type_name(int type)
         {
             switch (type)
             {
             case number_double:
             case number_integer:
-                return "number";
+                return "value::number";
             case string:
-                return "string";
+                return "value::string";
             case null:
-                return "null";
+                return "value::null";
             case boolean:
-                return "boolean";
-            case _empty:
-                return "_empty";
+                return "value::boolean";
             }
             return "unknown";
         }
-        virtual const char *type_name() const { return basic_type_name(_type); }
+        const char *type_name() const { return type_name(_type); }
 
     private:
         void ensure_is(int type) const
         {
             if (_type != type && _type != null)
-                _SJSON_THROW_TYPE_ADJUST_RAW(type_name(), basic_type_name(type));
+                _SJSON_THROW_TYPE_ADJUST_RAW(type_name(), type_name(type));
         }
         friend class json_base::_my_initializer_list;
         int _type;
         _fake_union _data;
     };
 
-    class object : public std::unordered_map<string_t, json_base>
-    {
-    public:
-    };
+    using object=std::unordered_map<string_t, json_base>;
+    // class object : public std::unordered_map<string_t, json_base>
+    // {
+    // public:
+    // };
     class array : public std::vector<json_base>
     {
     public:
@@ -578,10 +426,9 @@ public:
         >::type = 0
     > inline operator _t () const{return _t(as_value());}
 
-    friend std::ostream &operator<<(std::ostream &os, const json_base &j)
+    inline friend std::ostream &operator<<(std::ostream &os, const json_base &j)
     {
-        
-        return os;
+        return os << j.dump(std::string(os.width(), ' '));
     }
 
 #if defined(_SJSON_DISABLE_AUTO_TYPE_ADJUST)
@@ -590,10 +437,6 @@ public:
 #define _ENSURE_IS(t) ((void)0)
 #endif
 
-    // 0 会被当成指针造成歧义。。。
-    json_base &operator[](int idx) { return this->operator[](size_t(idx)); }
-    const json_base &operator[](int idx) const
-    { return this->operator[](size_t(idx)); }
     json_base &operator[](size_t idx)
     {
         _ENSURE_IS(json_type::array);
@@ -611,14 +454,18 @@ public:
         return as_array()[idx];
     }
 
-    json_base &operator[](const char *const key)
-    {
-        return this->operator[](std::move(std::string(key)));
-    }
-    const json_base &operator[](const char *const key)const
+    // 不使用 char* 以防止 0 被识别成 C 风格字符串
+    template <typename _t>
+    json_base &operator[](const _t *const key)
     {
         return this->operator[](std::move(string_t(key)));
     }
+    template <typename _t>
+    const json_base &operator[](const _t *const key)const
+    {
+        return this->operator[](std::move(string_t(key)));
+    }
+
     json_base &operator[](const string_t &key)
     {
         _ENSURE_IS(json_type::object);
@@ -640,9 +487,15 @@ public:
         return _empty_res;
     }
 
-#undef _ENSURE_IS
-
     inline json_type type() const { return _type; }
+    std::string type_name()const
+    {
+        if(is_value())
+        {
+            return as_value().type_name();
+        }
+        else return json_type_name(_type);
+    }
     inline bool is_value() const { return _type == json_type::value; }
     inline bool is_array() const { return _type == json_type::array; }
     inline bool is_object() const { return _type == json_type::object; }
@@ -678,6 +531,8 @@ public:
         _ENSURE_IS(json_type::value);
         return _data.as<value>();
     }
+
+#undef _ENSURE_IS
 
     bool empty() const
     {
@@ -873,8 +728,8 @@ private:
                 }
                 const auto &first = node.as_array()[0];
                 if (
-                    (!first.is_value()) || first.as_value().type() != value::string)
-                {
+                    (!first.is_value()) || first.as_value().type() != value::string
+                ){
                     is_object = false;
                     break;
                 }
@@ -884,11 +739,13 @@ private:
                 _data = object();
                 for (auto &it : x)
                 {
-                    _data.as_object()[
-                        it._data.as_array()[0]
-                        .as_value()
-                        .template as<string_t>()
-                    ] = it._data.as_array()[1];
+                    _data.as_object().insert(
+                        {
+                            it._data.as_array()[0].as_value()
+                            .template as<std::string>(),
+                            it._data.as_array()[1]
+                        }
+                    );
                 }
                 return;
             }
@@ -951,14 +808,14 @@ private:
     {
         if (_type != x)
         {
-            if (_type == json_type::value && as_value().type() == value::_empty)
+            if (_type == json_type::value && as_value().type() == value::null)
                 return;
             _SJSON_THROW_TYPE_ADJUST(_type, x);
         }
     }
 };
 
-using json = json_base<std::wstring>;
+using json = json_base<void>;
 json operator""_json(const char *s)
 {
     return json::parse(s);
